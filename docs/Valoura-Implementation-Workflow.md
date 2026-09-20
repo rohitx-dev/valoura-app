@@ -38,14 +38,14 @@ These choices preserve the actual architecture document. Earlier informal sugges
 | Next.js App Router, React, Tailwind | Phase 2 scaffold; Phase 3 UI | Public pages and interactive dashboards |
 | Express + TypeScript | Phase 2 scaffold; Phase 4 APIs | One backend containing feature modules |
 | ESLint, Prettier, GitHub Actions | Phase 2 | Consistent code and automated checks |
-| MongoDB replica set + Mongoose | Phase 4 | Models, indexes and multi-document transactions |
+| PostgreSQL | Phase 4 | Models, indexes and multi-document transactions |
 | Zod and OpenAPI | Phase 4, then every API feature | Runtime validation and shared API contract |
-| MongoDB-backed opaque sessions, Argon2id | Phase 5 | Browser authentication and password hashing |
+| PostgreSQL-backed opaque sessions, Argon2id | Phase 5 | Browser authentication and password hashing |
 | SMTP adapter/local mail catcher | Phase 5 | Verification/reset mail; later notifications |
-| Cloudinary upload adapter | Phase 6 | Vendor gallery images; MongoDB stores metadata |
+| Cloudinary upload adapter | Phase 6 | Vendor gallery images; PostgreSQL stores metadata |
 | Vitest + Supertest | Phase 4 onward | Business-rule and real-database API tests |
 | Playwright | First integrated journey onward | Customer/vendor/admin browser flows |
-| MongoDB jobs/outbox + one worker | Scaffold Phase 2; durable execution Phase 9 | Expiry, retries, notifications and reconciliation |
+| PostgreSQL jobs/outbox + one worker | Scaffold Phase 2; durable execution Phase 9 | Expiry, retries, notifications and reconciliation |
 | Razorpay Orders + Standard Checkout | Phase 10 | Sandbox customer payment |
 | Razorpay Route adapter | Phase 12 | Separate vendor transfer/settlement tracking |
 | Hosting for web/API/worker and managed database | Staging in Phase 4; release Phase 13 | Early deployment feedback and final release |
@@ -60,7 +60,7 @@ Redis, Elasticsearch, microservices and Kubernetes are not prerequisites for thi
 
 **Owner:** PM → TL. **Backlog:** V-01. **Outcome:** a reliable starting checklist.
 
-You previously reported completing MongoDB connection and authentication and starting Next.js. Treat those as existing work to inspect, not as a reason to delete the project or assume every requirement passes.
+Valoura is starting from a fresh application implementation baseline. Previous Valoura code and implementation experience may be inspected as reference material, but no previous feature is considered complete unless it is intentionally implemented and verified in this repository.
 
 1. Inspect the existing repository and run the existing applications.
 2. Record each area as working, partial, missing or needs migration, with evidence.
@@ -144,7 +144,7 @@ The first push bootstraps main. Subsequent work uses PRs. If GitHub already cont
 **Owner:** TL → BE → QA/DevOps. **Backlog:** remaining V-03 and V-04.
 
 1. Document request/response DTOs, errors, pagination and role rules in OpenAPI/shared contracts.
-2. Connect an isolated development MongoDB replica set. Prepare a separate test database with transaction support.
+2. Connect an isolated development PostgreSQL database. Prepare a separate PostgreSQL test database and manage schema changes through versioned migrations.
 3. Implement foundational user/vendor/category/city schemas and index migration commands. Add booking/payment models with their later feature phases once contracts are ready; never omit their indexes when introduced.
 4. Seed at least 12 fictional vendors across photographers, makeup artists and decorators, including unpublished/suspended test cases.
 5. Make seed and index setup repeatable. Verify actual indexes, not just schema declarations.
@@ -226,7 +226,7 @@ The first push bootstraps main. Subsequent work uses PRs. If GitHub already cont
 3. Verify checkout signatures server-side. Handle signed webhooks using the original raw request bytes. [S5/S6]
 4. Persist events durably and make duplicate delivery safe; provider events can repeat and arrive out of order. [S6]
 5. Use one capture-allocation service for webhook and browser verification paths. Confirm only captured payment matching the order/amount/currency and a currently owned unexpired hold.
-6. Reconcile provider timeouts, closed browsers and missing/delayed events. External provider calls are outside MongoDB transactions; durable intents bridge failures between the two systems.
+6. Reconcile provider timeouts, closed browsers and missing/delayed events. External provider calls are outside PostgreSQL transactions; durable intents bridge failures between the database and external provider.
 7. Route late/duplicate/unallocatable captured charges into technical refund intents. Never revive an expired booking or take another booking's slot.
 
 **Done when:** T-12 through T-19 plus T-29/T-35 pass as applicable, and staging receives a real sandbox webhook. Refund intent recording is built here; actual refund execution is completed in Phase 11 before releasing the full journey.
