@@ -1,0 +1,40 @@
+name: Valoura Task
+description: Create a planned Valoura development task
+title: "V-XX "
+labels: []
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: What outcome should this issue produce?
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: |
+        - [ ] First measurable condition
+        - [ ] Second measurable condition
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: List blocking issues or write None.
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation notes
+      description: Important technical decisions or constraints.
+
+  - type: textarea
+    id: testing
+    attributes:
+      label: Testing requirements
+      description: Explain how completion will be verified.
