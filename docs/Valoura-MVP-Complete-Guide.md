@@ -4,7 +4,7 @@ Prepared for Rohit Singh · Version 1.0 · 11 September 2026
 
 This guide contains all eight planning documents for a wedding vendor marketplace with online payments and booking management. The accompanying ZIP includes the same documents separately for your GitHub repository, a README, and visual wireframes.
 
-**Baseline:** India/INR, Next.js and TypeScript frontend, Express and TypeScript backend, MongoDB, one vendor/date per booking, vendor quotation followed by full payment, cancellations and refunds. Sandbox implementation comes first; live vendor settlement has its own readiness requirements. These are proposed product decisions; no implementation is claimed complete.
+**Baseline:** India/INR, Next.js and TypeScript frontend, Express and TypeScript backend, PostgreSQL, one vendor/date per booking, vendor quotation followed by full payment, cancellations and refunds. Sandbox implementation comes first; live vendor settlement has its own readiness requirements. These are proposed product decisions; no implementation is claimed complete.
 
 **Contents**
 
@@ -413,7 +413,7 @@ flowchart TD
     B --> P[Same-origin API proxy]
     P --> A[Express API]
     W --> A
-    A --> D[MongoDB]
+    A --> D[PostgreSQL]
     A --> C[Image storage]
     A --> R[Razorpay]
     R --> H[Signed webhook endpoint]
@@ -432,15 +432,15 @@ Browser requests use `/api/v1` on the same origin. A reverse proxy routes them t
 | Frontend | Next.js App Router + React + TypeScript | Public discovery pages plus interactive dashboards; explicit types help learning and refactoring. |
 | Styling | Tailwind CSS with reusable components | Consistent spacing/layout; learn CSS layout fundamentals alongside utilities. |
 | Backend | Node.js + Express + TypeScript | Clear API/service separation and transferable backend skills. |
-| Database | MongoDB replica set + Mongoose | Fits vendor documents/gallery metadata; replica set supports transactional booking changes. |
+| Database | PostgreSQL | Relational constraints, indexes and ACID transactions support booking, payment and availability invariants. |
 | Validation | Zod request schemas | Treat browser data as untrusted; validate at API boundary. |
-| Authentication | Server-side opaque sessions stored in MongoDB | Easy revocation/logout for a browser-only MVP. |
+| Authentication | Server-side opaque sessions stored in PostgreSQL | Easy revocation/logout for a browser-only MVP. |
 | Passwords | Argon2id through a maintained library | Salted password hashing, with parameters benchmarked during implementation. |
 | Images | Cloudinary through backend-controlled uploads | Proposed managed image storage/transform adapter; verify account constraints at setup. |
 | Customer payments | Razorpay Standard Checkout + Orders | Hosted payment UI, server-side verification and durable local records. |
 | Vendor transfers | Razorpay Route adapter, subject to account enablement | Separate vendor onboarding and money movement. |
 | Email | SMTP adapter; local mail catcher in development | Supports verification/reset and transactional notifications without provider coupling. |
-| Background work | MongoDB jobs/outbox + one worker process | Durable expiration, webhook processing and reconciliation without Redis initially. |
+| Background work | PostgreSQL jobs/outbox + one worker process | Durable expiration, webhook processing and reconciliation without Redis initially. |
 | Tests | Vitest, Supertest, Playwright | Unit rules, real database/API integration and essential browser journeys. |
 | Workflow | npm workspaces, ESLint, Prettier, GitHub Actions | One lockfile and reproducible checks. |
 | Hosting topology | Web, API and worker processes; managed replica-set database | Hosting vendor can be selected later without changing application contracts. |
@@ -485,7 +485,7 @@ Razorpay's checkout integration requires server-side signature verification and 
 4. **Allocate:** in a transaction, compare current time with hold deadline, slot owner/state and booking state. Persist the captured attempt, set one allocated payment, confirm booking and slot, and queue notification/transfer work.
 5. **Compensate:** captured charge without a valid allocation gets a technical refund intent. Do not reacquire a date or revive expired/cancelled bookings for a late event.
 
-MongoDB conditional writes and unique indexes protect individual resources; transactions coordinate multiple documents [S4]. External provider calls cannot be part of a MongoDB transaction. Use durable intent/job records to recover the gap.
+PostgreSQL constraints, conditional updates and unique indexes protect individual resources; transactions coordinate related relational changes [S4]. External provider calls cannot be part of a PostgreSQL transaction. Use durable intent/job records to recover the gap.
 
 ### Ambiguous external requests
 
@@ -520,22 +520,22 @@ These sources support platform mechanics. Valoura's policies, durations, scope a
 - [S1 — Next.js installation](https://nextjs.org/docs/app/getting-started/installation)
 - [S2 — Razorpay Standard Checkout integration](https://razorpay.com/docs/payments/payment-gateway/web-integration/standard/integration-steps/)
 - [S3 — Razorpay webhook validation and testing](https://razorpay.com/docs/webhooks/validate-test/)
-- [S4 — MongoDB atomicity and transactions](https://www.mongodb.com/docs/manual/core/write-operations-atomicity/)
+- [S4 — PostgreSQL transaction isolation](https://www.postgresql.org/docs/current/transaction-iso.html)
 - [S5 — Razorpay Route](https://razorpay.com/docs/payments/route/)
 - [S6 — Refund payments and reverse transfers](https://razorpay.com/docs/api/payments/route/refund-payments-and-reverse-transfer/)
 - [S7 — OWASP session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
 - [S8 — GitHub flow](https://docs.github.com/en/get-started/using-github/github-flow)
 
 
-# 05 — MongoDB Database Design
+# 05 — PostgreSQL Database Design
 
-Version 1.0 · Canonical names for implementation · Use a replica set in development and tests
+Version 1.0 · Canonical names for implementation · Use isolated PostgreSQL databases in development and tests
 
 ## 1. Conventions
 
 All collections use `_id: ObjectId`, `createdAt` and `updatedAt` unless stated otherwise. API serializes `_id` as `id` string. References are ObjectIds. Money is integer paise with `currency: "INR"`. Instants are UTC dates; `eventDate` is a validated `YYYY-MM-DD` local date with `timeZone: "Asia/Kolkata"`. Calculate deadline instants with a timezone-aware library; do not parse a date-only string as local server time.
 
-Use Mongoose schemas plus service validation and explicit database indexes. `unique: true` expresses an index requirement, not a sufficient request validator. Create indexes through versioned setup/migration scripts and check they actually exist before payment tests. Map duplicate-key conflicts to stable API errors.
+Use versioned SQL migrations plus service validation, relational constraints and explicit database indexes. Database UNIQUE constraints are integrity guarantees, not substitutes for request validation. Apply migrations consistently in development, test and staging, verify required constraints/indexes before payment tests, and map constraint violations to stable API errors.
 
 ## 2. Relationships
 
@@ -591,7 +591,7 @@ Both: `slug` unique, `name`, `active`. Categories seeded as `photographer`, `mak
 
 Profile fields: `businessName` (2–150), `categoryId`, `cityId`, `description` (50–5,000), `startingPricePaise` (positive bounded integer), `gallery` (1–12 objects of owned `assetId`, safe delivery URL, alt text and order). Drafts may be incomplete; submission validates the full profile. After first approval, editing sets draft differences while public reads keep the published version. Subsequent submission keeps existing published profile visible; moderation status for the submission is recorded separately as `reviewStatus: idle|pending|rejected`. Vendor `status` stays approved for an already published listing unless suspended. First submission uses status pending; first rejection uses rejected. This separation avoids hiding approved profiles during routine edits.
 
-Indexes: unique owner/slug; public filter `{status:1,"publishedProfile.cityId":1,"publishedProfile.categoryId":1,"publishedProfile.startingPricePaise":1,_id:1}`. Public service also checks owner active status. Choose fixed filter queries; no arbitrary user-supplied Mongo expressions.
+Indexes: enforce unique owner and slug constraints. Add indexes supporting public discovery filters such as status, city, category, starting price and stable ID-based pagination. The public service must also verify that the vendor owner is active. Use predefined parameterized queries and never interpolate untrusted user input into SQL.
 
 ### `assets`
 
@@ -978,7 +978,7 @@ Use one root npm workspace configuration and `package-lock.json`. No `node_modul
 2. Scaffold web/API/contracts folders; choose and record compatible versions.
 3. Add TypeScript, lint/format settings, workspace scripts and `.env.example` files.
 4. Add API health endpoint and a minimal home page; verify web reaches API.
-5. Connect a development MongoDB replica set; implement idempotent seed/index scripts.
+5. Connect a development PostgreSQL database; implement versioned migrations and idempotent seed scripts.
 6. Add CI, issue/PR templates and a baseline README; then begin feature branches.
 
 If authentication already exists, audit it against documents 02/04/06 and reuse working pieces. Map existing `user` role to the chosen `customer` role through a migration if needed. Add missing email verification/session/ownership protections as explicit issues; do not silently lose existing accounts.
@@ -995,7 +995,7 @@ Implement these root scripts during scaffold. They are a target command interfac
 | `npm run lint` | Explicit ESLint checks for all workspaces |
 | `npm run typecheck` | TypeScript checks for all workspaces |
 | `npm run test` | Unit tests |
-| `npm run test:integration` | API/DB tests against isolated replica set |
+| `npm run test:integration` | API/DB tests against an isolated PostgreSQL test database |
 | `npm run test:e2e` | Essential browser journeys |
 | `npm run build` | Build deployable web/API |
 | `npm run db:indexes` | Apply/check versioned indexes |
@@ -1007,7 +1007,7 @@ Implement these root scripts during scaffold. They are a target command interfac
 | --- | --- | --- |
 | `NODE_ENV` | Server processes | Environment mode |
 | `APP_ORIGIN` | API/web server | Allowed browser origin and callback links |
-| `MONGODB_URI` | API/worker | Replica-set database connection |
+| `DATABASE_URL` | API/worker | PostgreSQL database connection |
 | `API_INTERNAL_URL` | Web server only | Server-rendered requests to API |
 | `NEXT_PUBLIC_API_BASE` | Browser | Public `/api/v1` prefix only |
 | `SESSION_SECRET` | API | Session middleware signing/config secret |
@@ -1174,7 +1174,7 @@ V-15 is backend infrastructure and may begin once model contracts are stable; bu
 | Foundation | Git branches/commits/PRs, npm workspaces, TypeScript types | Every issue and project scaffold |
 | Home/discovery | CSS flex/grid, responsive layout, React components, URL query state | Vendor cards, filters and pages |
 | Identity | HTTP cookies, hashing, CSRF, sessions, role vs ownership | Secure customer/vendor accounts |
-| Data/API | Mongoose schemas, indexes, validation, REST status codes | Vendor profiles and requests |
+| Data/API | PostgreSQL schema/migrations, constraints, indexes, validation, REST status codes | Vendor profiles and requests |
 | Booking | State machines, UTC vs local dates, conditional writes, transactions | Quotes, holds and cancellations |
 | Payments | Orders, signatures, capture, idempotency, webhook retries | Verified confirmation and compensation |
 | Operations | Durable jobs, reconciliation, logs, backup/restore | Refunds, transfers and deployment |
@@ -1183,7 +1183,7 @@ Use each topic to implement its issue immediately; avoid trying to master the wh
 
 ## 4. Test approach
 
-Unit tests cover policy dates, legal state transitions, integer money validation and entitlement arithmetic. API integration tests run against an actual isolated MongoDB replica set with real indexes and transactions; mock provider transport, not the booking persistence layer. Browser tests cover the main customer/vendor/admin workflows. Sandbox provider verification is a separate release exercise; do not put live credentials or real charges in CI.
+Unit tests cover policy dates, legal state transitions, integer money validation and entitlement arithmetic. API integration tests run against an actual isolated PostgreSQL test database with real constraints, indexes and transactions; mock provider transport, not the booking persistence layer. Browser tests cover the main customer/vendor/admin workflows. Sandbox provider verification is a separate release exercise; do not put live credentials or real charges in CI.
 
 Run deterministic tests with a controllable clock. Concurrency tests should start competing requests together and assert final database invariants, not just HTTP responses. Failure injection simulates crashes after an external response but before local persistence, delayed/duplicate events and worker lease expiration.
 
@@ -1261,6 +1261,6 @@ Browser journeys: (1) customer discovery→request; (2) vendor quote→customer 
 
 **Session 2:** Scaffold or align web/API/contracts folders and environment examples. Get one home page and API health response working. Open a scaffold PR.
 
-**Session 3:** Add lint/typecheck/build CI and connect the development replica set. Start home-page components using fixtures while preparing vendor schemas. Keep each change small enough to explain in a PR.
+**Session 3:** Add lint/typecheck/build CI and connect the development PostgreSQL database. Start home-page components using fixtures while preparing the relational vendor schema. Keep each change small enough to explain in a PR.
 
 This documentation is the plan. Mark an issue Done only after its implementation and verification exist; none of these backlog items is pre-marked complete.
